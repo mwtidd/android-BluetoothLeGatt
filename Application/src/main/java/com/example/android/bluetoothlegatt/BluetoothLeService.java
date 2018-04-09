@@ -26,8 +26,14 @@ import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
+import android.location.Location;
+import android.location.LocationManager;
+import android.location.LocationProvider;
+import android.net.wifi.aware.PublishConfig;
 import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
@@ -65,6 +71,27 @@ public class BluetoothLeService extends Service {
 
     public final static UUID UUID_HEART_RATE_MEASUREMENT =
             UUID.fromString(SampleGattAttributes.HEART_RATE_MEASUREMENT);
+
+    private LocationManager mLocationManager = null;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        mLocationManager = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+    }
+
+    private void initializeLocationManager() {
+        Log.e(TAG, "initializeLocationManager");
+        if (mLocationManager == null) {
+            mLocationManager = (LocationManager) getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+        }
+    }
 
     // Implements callback methods for GATT events that the app cares about.  For example,
     // connection change and services discovered.
@@ -114,6 +141,58 @@ public class BluetoothLeService extends Service {
         }
     };
 
+    private void updateMockLocation(double latitude, double longitude)
+    {
+        try {
+            mLocationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
+        }catch(Exception e){
+
+        }
+
+        mLocationManager.addTestProvider
+                (
+                        LocationManager.GPS_PROVIDER,
+                        "requiresNetwork" == "",
+                        "requiresSatellite" == "",
+                        "requiresCell" == "",
+                        "hasMonetaryCost" == "",
+                        "supportsAltitude" == "",
+                        "supportsSpeed" == "",
+                        "supportsBearing" == "",
+
+                        android.location.Criteria.POWER_LOW,
+                        android.location.Criteria.ACCURACY_FINE
+                );
+
+        Location newLocation = new Location(LocationManager.GPS_PROVIDER);
+
+        newLocation.setLatitude(latitude);
+        newLocation.setLongitude(longitude);
+        newLocation.setTime(System.currentTimeMillis());
+        newLocation.setAccuracy(3.0f);
+        newLocation.setElapsedRealtimeNanos(System.nanoTime());
+
+        mLocationManager.setTestProviderEnabled
+                (
+                        LocationManager.GPS_PROVIDER,
+                        true
+                );
+
+        mLocationManager.setTestProviderStatus
+                (
+                        LocationManager.GPS_PROVIDER,
+                        LocationProvider.AVAILABLE,
+                        null,
+                        System.currentTimeMillis()
+                );
+
+        mLocationManager.setTestProviderLocation
+                (
+                        LocationManager.GPS_PROVIDER,
+                        newLocation
+                );
+    }
+
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
         sendBroadcast(intent);
@@ -147,9 +226,25 @@ public class BluetoothLeService extends Service {
                 for(byte byteChar : data)
                     stringBuilder.append(String.format("%02X ", byteChar));
                 intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
+
+                updateData(new String(data));
+
             }
         }
         sendBroadcast(intent);
+    }
+
+    private void updateData(String data){
+        if (data != null) {
+            if(data.indexOf("\n") > -1){
+                data = data.substring(0, data.indexOf("\n"));
+            }
+
+            if(data.indexOf(".") > -1 && data.indexOf(" ")> -1){
+                updateMockLocation(Double.parseDouble(data.substring(0,data.indexOf(" "))), Double.parseDouble(data.substring(data.indexOf(" "))));
+            }
+
+        }
     }
 
     public class LocalBinder extends Binder {

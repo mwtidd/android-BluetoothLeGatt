@@ -7,10 +7,14 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:3.0.1'
+        classpath 'com.canelmas.let:let-plugin:0.1.10'
     }
 }
 
 apply plugin: 'com.android.application'
+
+//Runtime permission annotation library
+apply plugin: 'let'
 
 repositories {
     jcenter()

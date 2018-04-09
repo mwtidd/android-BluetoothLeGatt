@@ -16,6 +16,7 @@
 
 package com.example.android.bluetoothlegatt;
 
+import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
@@ -25,8 +26,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.location.LocationProvider;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -45,7 +52,7 @@ import java.util.List;
  * communicates with {@code BluetoothLeService}, which in turn interacts with the
  * Bluetooth LE API.
  */
-public class DeviceControlActivity extends Activity {
+public class DeviceControlActivity extends Activity implements LocationListener {
     private final static String TAG = DeviceControlActivity.class.getSimpleName();
 
     public static final String EXTRAS_DEVICE_NAME = "DEVICE_NAME";
@@ -61,6 +68,8 @@ public class DeviceControlActivity extends Activity {
             new ArrayList<ArrayList<BluetoothGattCharacteristic>>();
     private boolean mConnected = false;
     private BluetoothGattCharacteristic mNotifyCharacteristic;
+
+    private LocationManager mLocationManager = null;
 
     private final String LIST_NAME = "NAME";
     private final String LIST_UUID = "UUID";
@@ -172,6 +181,9 @@ public class DeviceControlActivity extends Activity {
         getActionBar().setDisplayHomeAsUpEnabled(true);
         Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
         bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+
+        mLocationManager = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
+        initializeLocationManager();
     }
 
     @Override
@@ -182,12 +194,20 @@ public class DeviceControlActivity extends Activity {
             final boolean result = mBluetoothLeService.connect(mDeviceAddress);
             Log.d(TAG, "Connect request result=" + result);
         }
+
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+
+            mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 400, 1, this);
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         unregisterReceiver(mGattUpdateReceiver);
+
     }
 
     @Override
@@ -195,6 +215,7 @@ public class DeviceControlActivity extends Activity {
         super.onDestroy();
         unbindService(mServiceConnection);
         mBluetoothLeService = null;
+        mLocationManager.removeUpdates(this);
     }
 
     @Override
@@ -237,9 +258,100 @@ public class DeviceControlActivity extends Activity {
 
     private void displayData(String data) {
         if (data != null) {
+            if(data.indexOf("\n") > -1){
+                data = data.substring(0, data.indexOf("\n"));
+            }
+
+            /**
+            if(data.indexOf(".") > -1 && data.indexOf(" ")> -1){
+                updateMockLocation(Double.parseDouble(data.substring(0,data.indexOf(" "))), Double.parseDouble(data.substring(data.indexOf(" "))));
+            }
+             **/
+
             mDataField.setText(data);
         }
     }
+
+    private void updateMockLocation(double latitude, double longitude)
+    {
+        try {
+            mLocationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
+        }catch(Exception e){
+
+        }
+
+        mLocationManager.addTestProvider
+                (
+                        LocationManager.GPS_PROVIDER,
+                        "requiresNetwork" == "",
+                        "requiresSatellite" == "",
+                        "requiresCell" == "",
+                        "hasMonetaryCost" == "",
+                        "supportsAltitude" == "",
+                        "supportsSpeed" == "",
+                        "supportsBearing" == "",
+
+                        android.location.Criteria.POWER_LOW,
+                        android.location.Criteria.ACCURACY_FINE
+                );
+
+        Location newLocation = new Location(LocationManager.GPS_PROVIDER);
+
+        newLocation.setLatitude(latitude);
+        newLocation.setLongitude(longitude);
+        newLocation.setTime(System.currentTimeMillis());
+        newLocation.setAccuracy(3.0f);
+        newLocation.setElapsedRealtimeNanos(System.nanoTime());
+
+        mLocationManager.setTestProviderEnabled
+                (
+                        LocationManager.GPS_PROVIDER,
+                        true
+                );
+
+        mLocationManager.setTestProviderStatus
+                (
+                        LocationManager.GPS_PROVIDER,
+                        LocationProvider.AVAILABLE,
+                        null,
+                        System.currentTimeMillis()
+                );
+
+        mLocationManager.setTestProviderLocation
+                (
+                        LocationManager.GPS_PROVIDER,
+                        newLocation
+                );
+    }
+
+    private void initializeLocationManager() {
+        Log.e(TAG, "initializeLocationManager");
+        if (mLocationManager == null) {
+            mLocationManager = (LocationManager) getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+        }
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        System.out.println("What is the location? (" + location.getLatitude() + ", " + location.getLongitude() + ")");
+    }
+
+    @Override
+    public void onStatusChanged(String s, int i, Bundle bundle) {
+
+    }
+
+    @Override
+    public void onProviderEnabled(String s) {
+
+    }
+
+    @Override
+    public void onProviderDisabled(String s) {
+
+    }
+
+
 
     // Demonstrates how to iterate through the supported GATT Services/Characteristics.
     // In this sample, we populate the data structure that is bound to the ExpandableListView
